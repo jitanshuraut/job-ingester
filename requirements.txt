@@ -1,0 +1,7 @@
+python-dotenv
+supabase
+resend
+jinja2
+requests
+psutil
+python-dateutil
