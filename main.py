@@ -8,6 +8,7 @@ load_dotenv()
 
 api_keys = {
     "jayeshastha@gmail.com": os.environ.get("API_KEY_JAYESHASTHA"),
+    "jayeshastha@gmail.com": os.environ.get("API_KEY_JAYESHASTHA2"),
     "manassoni575@gmail.com": os.environ.get("API_KEY_MANASSONI"),
 
 }
