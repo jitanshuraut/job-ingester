@@ -6,12 +6,11 @@ from app.emailer.emailer import Emailer
 
 load_dotenv()
 
-api_keys = {
-    "jayeshastha@gmail.com": os.environ.get("API_KEY_JAYESHASTHA"),
-    "jayeshastha@gmail.com": os.environ.get("API_KEY_JAYESHASTHA2"),
-    "manassoni575@gmail.com": os.environ.get("API_KEY_MANASSONI"),
 
-}
+emails = [
+    "jayeshastha@gmail.com",
+    "manassoni575@gmail.com",
+]
 
 
 def main():
@@ -24,10 +23,10 @@ def main():
     new_jobs = aggregator.run()
     sender_objects = []
 
-    for email, api_key in api_keys.items():
+    for email in emails:
         print(f"Creating emailer object for {email}...")
         try:
-            emailer = Emailer(api_key=api_key, recipient_email=email)
+            emailer = Emailer(recipient_emails=[email])
             sender_objects.append(emailer)
             print(f"✅ Created emailer for {email}")
         except Exception as e:
@@ -38,17 +37,17 @@ def main():
     for i, sender in enumerate(sender_objects):
         try:
             print(
-                f"\nProcessing sender {i+1}/{len(sender_objects)}: {sender.recipient_email}")
+                f"\nProcessing sender {i+1}/{len(sender_objects)}: {sender.recipient_emails}")
 
             if new_jobs:
                 sender.send_jobs(new_jobs)
                 print(
-                    f"✅ Successfully sent {len(new_jobs)} jobs to {sender.recipient_email}")
+                    f"✅ Successfully sent {len(new_jobs)} jobs to {sender.recipient_emails}")
             else:
-                print(f"⚠️ No jobs found for {sender.recipient_email}")
+                print(f"⚠️ No jobs found for {sender.recipient_emails}")
 
         except Exception as e:
-            print(f"❌ Error sending jobs to {sender.recipient_email}: {e}")
+            print(f"❌ Error sending jobs to {sender.recipient_emails}: {e}")
 
     print(f"\nCompleted processing {len(sender_objects)} senders")
     print(
