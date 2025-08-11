@@ -10,6 +10,7 @@ load_dotenv()
 emails = [
     "jayeshastha@gmail.com",
     "manassoni575@gmail.com",
+    "gbhardwaj572@gmail.com"
 ]
 
 
@@ -21,35 +22,22 @@ def main():
 
     aggregator = JobAggregator()
     new_jobs = aggregator.run()
-    sender_objects = []
+    print(f"Creating emailer object for all recipients...")
+    try:
+        emailer = Emailer(recipient_emails=emails)
+        print(f"✅ Created emailer for recipients: {emails}")
+    except Exception as e:
+        print(f"❌ Error creating emailer: {e}")
+        return
 
-    for email in emails:
-        print(f"Creating emailer object for {email}...")
+    if new_jobs:
         try:
-            emailer = Emailer(recipient_emails=[email])
-            sender_objects.append(emailer)
-            print(f"✅ Created emailer for {email}")
+            emailer.send_jobs(new_jobs)
+            print(f"✅ Successfully sent {len(new_jobs)} jobs to {emails}")
         except Exception as e:
-            print(f"❌ Error creating emailer for {email}: {e}")
-
-    print(f"\nCreated {len(sender_objects)} emailer objects")
-
-    for i, sender in enumerate(sender_objects):
-        try:
-            print(
-                f"\nProcessing sender {i+1}/{len(sender_objects)}: {sender.recipient_emails}")
-
-            if new_jobs:
-                sender.send_jobs(new_jobs)
-                print(
-                    f"✅ Successfully sent {len(new_jobs)} jobs to {sender.recipient_emails}")
-            else:
-                print(f"⚠️ No jobs found for {sender.recipient_emails}")
-
-        except Exception as e:
-            print(f"❌ Error sending jobs to {sender.recipient_emails}: {e}")
-
-    print(f"\nCompleted processing {len(sender_objects)} senders")
+            print(f"❌ Error sending jobs to {emails}: {e}")
+    else:
+        print(f"⚠️ No jobs found for {emails}")
     print(
         f"Memory usage at end: {process.memory_info().rss / 1024 ** 2:.2f} MB")
     print("=== Job Notifier Cron Finished ===")
