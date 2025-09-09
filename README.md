@@ -85,4 +85,4 @@ job-ingester/
 MIT
 
 ## Author
-- [Your Name](https://github.com/yourusername)
+- [Jitanshu](https://github.com/jitanshuraut)
