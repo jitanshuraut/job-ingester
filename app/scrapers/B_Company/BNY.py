@@ -2,62 +2,63 @@ from app.scrapers.base import BaseScraper
 from app.models.job import Job
 import requests
 import json
-from datetime import datetime
 from app.utils.DateConverter import convert_to_common_format
 
 
 class BNYScraper(BaseScraper):
-    def fetch_raw(self):
-        url = "https://bnymellon.eightfold.ai/api/pcsx/search?domain=bnymellon.com&query=&location=&start=0&sort_by=hot&filter_departments=Tech+-+Software+Engineering&filter_seniority=Entry"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Content-Type': 'application/json',
-            'Connection': 'keep-alive',
-            'Referer': 'bnymellon.eightfold.ai',
-            'Origin': 'bnymellon.eightfold.ai',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
+    SITE_NUMBER = "CX_3001"
+    LOCATION_ID = "300000000378365"
+    ORACLE_HOST = "eofe.fa.us2.oraclecloud.com"
+    IRC_USERID = "03d7889c-eefa-4a84-b558-9ec498428102"
+
+    def _build_url(self):
+        base = f"https://{self.ORACLE_HOST}/hcmRestApi/resources/latest/recruitingCEJobRequisitions"
+        params = (
+            "onlyData=true"
+            "&expand=requisitionList.workLocation"
+            f"&finder=findReqs;siteNumber={self.SITE_NUMBER},"
+            "facetsList=LOCATIONS,"
+            "limit=200,offset=0,"
+            f"locationId={self.LOCATION_ID},"
+            "sortBy=POSTING_DATES_DESC"
+        )
+        return f"{base}?{params}"
+
+    def _headers(self):
+        return {
+            'accept': '*/*',
+            'content-type': 'application/vnd.oracle.adf.resourceitem+json;charset=utf-8',
+            'ora-irc-cx-userid': self.IRC_USERID,
+            'ora-irc-language': 'en',
+            'origin': f'https://{self.ORACLE_HOST}',
+            'referer': f'https://{self.ORACLE_HOST}/hcmUI/CandidateExperience/en/sites/BNY-Careers/jobs',
+            'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36',
         }
-        try:
-            response = requests.get(
-                url,headers=headers,timeout=30)
-            print(response)
-            json_data = response.json()
-            return json_data
-        except json.JSONDecodeError:
-            print("Response is not valid JSON")
-            print("Response text:")
-            print(
-                response.text[:500] + "..." if len(response.text) > 500 else response.text)
-            return response.text
 
     def fetch_jobs(self) -> list[Job]:
-        raw = self.fetch_raw()
-        return self.parse(raw)
+        try:
+            r = requests.get(self._build_url(), headers=self._headers(), timeout=30)
+            data = r.json()
+            items = data.get("items", [])
+            if not items:
+                return []
+            reqs = items[0].get("requisitionList", [])
+        except (json.JSONDecodeError, requests.RequestException, IndexError, KeyError):
+            return []
 
-    def parse(self, data) -> list[Job]:
-        items = data.get("data", {}).get("positions",[])
-        job_list = []
-        for item in items:
-            job = Job(
-                title=item.get("name", ""),
-                jobid=item.get("displayJobId"),
+        all_jobs = []
+        for req in reqs:
+            title = req.get("Title", "")
+            job_id = str(req.get("Id", ""))
+            if not title or not job_id:
+                continue
+            location = req.get("PrimaryLocation") or "India"
+            all_jobs.append(Job(
+                title=title,
+                jobid=job_id,
                 company="BNY",
-                location=item.get("location", ""),
-                url=item.get("positionUrl", ""),
-                posted_date=convert_to_common_format(item.get("postedTs", "")),
-            )
-            job_list.append(job)
-        return job_list
-
-
-if __name__ == "__main__":
-    listener = BNYScraper()
-    jobs = listener.fetch_jobs()
-    for job in jobs:
-        print(job)
+                location=location,
+                url=f"https://{self.ORACLE_HOST}/hcmUI/CandidateExperience/en/sites/BNY-Careers/job/{job_id}",
+                posted_date=convert_to_common_format(req.get("PostedDate", "")),
+            ))
+        return all_jobs

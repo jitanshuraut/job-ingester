@@ -7,12 +7,10 @@ from app.utils.DateConverter import convert_to_common_format
 class AbleScraper(BaseScraper):
     def fetch_raw(self):
         url = "https://job-boards.greenhouse.io/able"
-    
         params = {
             'keyword': 'remote',
             '_data': 'routes/$url_token'
         }
-    
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept': 'application/json, text/plain, */*',
@@ -27,17 +25,13 @@ class AbleScraper(BaseScraper):
             'Cache-Control': 'no-cache',
             'Pragma': 'no-cache'
         }
-
         try:
-                response = requests.get(url, params=params, headers=headers, timeout=30)
-                print(response.status_code)
-                json_data = response.json()
-                return json_data
-        except json.JSONDecodeError:
-                print("Response is not valid JSON")
-                print("Response text:")
-                print(response.text[:500] + "..." if len(response.text) > 500 else response.text)
-                return response.text
+            response = requests.get(url, params=params, headers=headers, timeout=30)
+            print(response.status_code)
+            return response.json()
+        except (json.JSONDecodeError, requests.RequestException):
+            print(f"Request failed")
+            return {}
 
     def fetch_jobs(self) -> list[Job]:
         raw = self.fetch_raw()
@@ -49,14 +43,11 @@ class AbleScraper(BaseScraper):
         for item in job_posts:
             job = Job(
                 title=item.get("title", ""),
-                jobid=item.get("internal_job_id"),
+                jobid=str(item.get("id", "")),
                 company="Able",
                 location=item.get("location", ""),
                 url=item.get("absolute_url", ""),
-                posted_date=convert_to_common_format(item.get("published_at", ""))
+                posted_date=convert_to_common_format(item.get("updated_at", ""))
             )
             job_list.append(job)
         return job_list
-    
- 
-

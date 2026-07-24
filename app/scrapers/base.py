@@ -1,8 +1,10 @@
 # app/scrapers/base.py
-from typing import List
+from typing import List, Optional
 from app.models.job import Job
 
 class BaseScraper:
+    proxy: Optional[str] = None
+
     def fetch_jobs(self) -> List[Job]:
         raw = self.fetch_raw()
         return self.parse(raw)

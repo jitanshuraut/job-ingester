@@ -1,18 +1,26 @@
 import inspect
 import importlib
-import pkgutil
 import os
-from typing import List, Type
+import hashlib
+from typing import List, Optional, Callable
 from app.models.job import Job
 from app.db.db_client import SupabaseDB
+from app.db import local_db
 from app.scrapers.base import BaseScraper
+from app.utils.proxy_manager import has_proxies, next_proxy, random_wait, proxy_count
 from time import sleep
 from dataclasses import asdict
 
 
 class JobAggregator:
-    def __init__(self):
+    def __init__(self, log_fn: Optional[Callable[[str], None]] = None):
         self.db = SupabaseDB().get_client()
+        self.log = log_fn or print
+        local_db.init_db()
+        local_db.init_scrape_runs()
+        self._use_proxy = has_proxies()
+        if self._use_proxy:
+            self.log(f"🔁 Proxy rotation enabled ({proxy_count()} proxies)")
 
     def discover_scrapers(self) -> List[BaseScraper]:
         SCRAPER_ROOT_MODULE = "app.scrapers"
@@ -35,29 +43,68 @@ class JobAggregator:
                 try:
                     module = importlib.import_module(full_module_path)
                     for _, obj in inspect.getmembers(module):
-                        if inspect.isclass(obj) and issubclass(obj, BaseScraper) and obj is not BaseScraper:
-                            scrapers.append(obj())
+                        if (
+                            inspect.isclass(obj)
+                            and issubclass(obj, BaseScraper)
+                            and obj is not BaseScraper
+                            and obj.__name__ != "PlaywrightScraper"
+                        ):
+                            scraper = obj()
+                            if self._use_proxy:
+                                scraper.proxy = next_proxy()
+                            scrapers.append(scraper)
                 except Exception as e:
-                    print(f"❌ Error loading {full_module_path}: {e}")
+                    self.log(f"❌ Error loading {full_module_path}: {e}")
 
         return scrapers
 
     def run(self):
+        from datetime import datetime, timezone
+        started_at = datetime.now(timezone.utc).isoformat()
+        run_id = local_db.create_run(started_at)
+        self.log(f"📋 Run #{run_id} started at {started_at}")
+
         all_jobs: list[Job] = []
-        for scraper in self.discover_scrapers():
+        scrapers = self.discover_scrapers()
+        self.log(f"🔍 Discovered {len(scrapers)} scrapers")
+        count = 0
+        for scraper in scrapers:
+            count += 1
+            name = scraper.__class__.__name__
             try:
+                proxy_label = f" [proxy: {scraper.proxy}]" if scraper.proxy else ""
+                self.log(f"🔄 [{count}/{len(scrapers)}] Fetching from {name}...{proxy_label}")
                 jobs = scraper.fetch_jobs()
-                print(f"✅ {scraper.__class__.__name__} fetched {len(jobs)} jobs.")
+                self.log(f"✅ {name} fetched {len(jobs)} jobs.")
                 all_jobs.extend(jobs)
-                sleep(3)
+                if count < len(scrapers):
+                    w = random_wait()
+                    self.log(f"⏳ Waiting {w:.1f}s before next scraper...")
+                    sleep(w)
             except Exception as e:
-                print(f"❌ {scraper.__class__.__name__} failed: {e}")
+                self.log(f"❌ {name} failed: {e}")
+                if count < len(scrapers):
+                    w = random_wait()
+                    self.log(f"⏳ Waiting {w:.1f}s before next scraper...")
+                    sleep(w)
 
-        print(f"🌐 Total jobs collected: {len(all_jobs)}")
+        self.log(f"🌐 Total jobs collected: {len(all_jobs)}")
         valid_jobs = self._validate_jobs(all_jobs)
-        new_jobs: list[Job]=self._push_to_db(valid_jobs)
-        return new_jobs
 
+        new_jobs: list[Job] = []
+        skipped_jobs: list[Job] = []
+        self._push_to_db(valid_jobs, new_jobs, skipped_jobs)
+
+        ended_at = datetime.now(timezone.utc).isoformat()
+        local_db.complete_run(run_id, len(valid_jobs), len(new_jobs), len(skipped_jobs), ended_at)
+
+        if new_jobs:
+            local_db.add_run_jobs(run_id, new_jobs, was_new=True)
+        if skipped_jobs:
+            local_db.add_run_jobs(run_id, skipped_jobs, was_new=False)
+
+        self.log(f"✨ {len(new_jobs)} new jobs inserted to DB.")
+        return new_jobs
 
     def _validate_jobs(self, jobs: List[Job]) -> List[Job]:
         seen = set()
@@ -69,19 +116,29 @@ class JobAggregator:
             seen.add(job.url)
             filtered.append(job)
 
-        print(f"✅ {len(filtered)} jobs after validation.")
+        self.log(f"✅ {len(filtered)} jobs after validation (removed {len(jobs) - len(filtered)} duplicates).")
         return filtered
 
-    def _push_to_db(self, jobs: list[Job]):
-        new_jobs: list[Job] = []
+    def _push_to_db(self, jobs: list[Job], new_jobs: list[Job], skipped_jobs: list[Job]):
+        self.log("📦 Syncing local cache from Supabase...")
+        cached = local_db.sync_from_supabase(self.db)
+        self.log(f"📦 Local cache has {cached} existing jobs")
+
         for job in jobs:
+            if not job.jobid:
+                raw = f"{job.company}|{job.title}|{job.location}"
+                job.jobid = hashlib.md5(raw.encode()).hexdigest()[:16]
+
+            if local_db.job_exists(job):
+                skipped_jobs.append(job)
+                continue
+
             try:
                 self.db.table("jobs").insert(asdict(job)).execute()
-                print(f"⬆️  Inserted: {job.title} @ {job.company}")
-                new_jobs.append(job) 
+                local_db.insert_job(job.title, job.jobid, job.company, job.location, job.url, job.posted_date)
+                self.log(f"⬆️  Inserted: {job.title} @ {job.company}")
+                new_jobs.append(job)
             except Exception as e:
-                print(f"❌ Failed to insert {job.title} @ {job.company}: {e}")
-        return new_jobs
-                
+                self.log(f"❌ Failed to insert {job.title} @ {job.company}: {e}")
 
-
+        self.log(f"⏭️  Skipped {len(skipped_jobs)} existing jobs (already in DB)")

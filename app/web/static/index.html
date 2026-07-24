@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Ingester</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💼</text></svg>">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; min-height: 100vh; }
+
+        .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #fff; padding: 20px 0 0; box-shadow: 0 2px 12px rgba(0,0,0,0.15); position: sticky; top: 0; z-index: 100; }
+        .header-inner { max-width: 1200px; margin: 0 auto; padding: 0 24px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+        .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+        .header h1 span { color: #64ffda; }
+        .stats { display: flex; gap: 24px; font-size: 14px; }
+        .stats div { display: flex; align-items: center; gap: 6px; }
+        .stats strong { font-size: 18px; color: #64ffda; }
+
+        .tabs { display: flex; gap: 0; padding: 0 24px; max-width: 1200px; margin: 0 auto; }
+        .tab { padding: 10px 24px; font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.6); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; user-select: none; }
+        .tab:hover { color: #fff; }
+        .tab.active { color: #64ffda; border-bottom-color: #64ffda; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+        .page { display: none; }
+        .page.active { display: block; }
+
+        .filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; align-items: center; }
+        .search-wrapper { position: relative; flex: 1; min-width: 220px; }
+        .search-wrapper svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); opacity: 0.5; }
+        .search-wrapper input { width: 100%; padding: 10px 14px 10px 36px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; transition: border 0.2s, box-shadow 0.2s; background: #fff; }
+        .search-wrapper input:focus { border-color: #1a1a2e; box-shadow: 0 0 0 3px rgba(26,26,46,0.1); }
+
+        .filter-select { padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; background: #fff; cursor: pointer; min-width: 160px; }
+        .filter-select:focus { border-color: #1a1a2e; box-shadow: 0 0 0 3px rgba(26,26,46,0.1); }
+
+        .clear-btn { padding: 10px 16px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: #fff; cursor: pointer; transition: all 0.2s; display: none; }
+        .clear-btn:hover { background: #f3f4f6; border-color: #9ca3af; }
+        .clear-btn.visible { display: inline-flex; align-items: center; gap: 4px; }
+
+        .content { display: flex; gap: 24px; align-items: flex-start; }
+        .job-list { flex: 1; min-width: 0; }
+
+        .job-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 12px; transition: all 0.2s; }
+        .job-card:hover { border-color: #1a1a2e; box-shadow: 0 4px 16px rgba(0,0,0,0.08); transform: translateY(-1px); }
+        .job-card-header { margin-bottom: 8px; }
+        .job-card-title { font-size: 17px; font-weight: 600; color: #1a1a2e; line-height: 1.3; }
+        .job-card-company { color: #2563eb; font-weight: 500; font-size: 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+        .job-card-company::before { content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: #2563eb; }
+        .job-card-meta { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: #6b7280; margin-bottom: 12px; }
+        .job-card-meta span { display: flex; align-items: center; gap: 4px; }
+        .job-card-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 12px; border-top: 1px solid #f3f4f6; }
+        .job-card-date { font-size: 12px; color: #9ca3af; }
+        .apply-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; background: #1a1a2e; color: #fff; font-size: 13px; font-weight: 500; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; transition: background 0.2s; }
+        .apply-btn:hover { background: #16213e; }
+        .applied-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 12px; font-weight: 500; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; cursor: pointer; transition: all 0.2s; color: #6b7280; }
+        .applied-btn:hover { border-color: #059669; color: #059669; }
+        .applied-btn.active { background: #059669; color: #fff; border-color: #059669; }
+        .applied-date { font-size: 11px; color: #059669; font-weight: 500; }
+        .applied-btn.active:hover { background: #047857; border-color: #047857; }
+        .job-card.applied { border-color: #34d399; background: #a7f3d0; }
+        .job-card.applied:hover { border-color: #059669; background: #86efac; }
+
+        .sidebar { width: 280px; flex-shrink: 0; position: sticky; top: 100px; }
+        .sidebar-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; }
+        .sidebar-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; }
+        .company-list { display: flex; flex-direction: column; gap: 4px; max-height: 400px; overflow-y: auto; }
+        .company-item { padding: 8px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all 0.15s; display: flex; justify-content: space-between; align-items: center; }
+        .company-item:hover { background: #f3f4f6; }
+        .company-item.active { background: #1a1a2e; color: #fff; font-weight: 500; }
+        .company-item .count { font-size: 11px; color: #9ca3af; background: #f3f4f6; padding: 2px 8px; border-radius: 10px; }
+        .company-item.active .count { background: rgba(255,255,255,0.2); color: #64ffda; }
+
+        .loading { text-align: center; padding: 80px 20px; color: #6b7280; }
+        .spinner { width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: #1a1a2e; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .empty { text-align: center; padding: 80px 20px; color: #9ca3af; }
+        .empty svg { margin-bottom: 16px; opacity: 0.4; }
+        .empty h3 { font-size: 18px; font-weight: 600; color: #6b7280; margin-bottom: 8px; }
+
+        .error { text-align: center; padding: 80px 20px; }
+        .error h3 { font-size: 18px; font-weight: 600; color: #dc2626; margin-bottom: 8px; }
+        .error p { color: #6b7280; margin-bottom: 16px; }
+        .retry-btn { padding: 10px 24px; background: #1a1a2e; color: #fff; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
+
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 24px; padding-bottom: 40px; }
+        .page-btn { padding: 8px 16px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .page-btn:hover:not(:disabled) { border-color: #1a1a2e; }
+        .page-btn:disabled { opacity: 0.4; cursor: default; }
+        .page-info { font-size: 13px; color: #6b7280; }
+
+        .history-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 24px; }
+        .date-btn { padding: 8px 18px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; font-size: 13px; cursor: pointer; transition: all 0.15s; }
+        .date-btn:hover { border-color: #1a1a2e; }
+        .date-btn.active { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+        .date-input { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px; outline: none; background: #fff; }
+        .date-input:focus { border-color: #1a1a2e; }
+
+        .history-group { margin-bottom: 32px; }
+        .history-group h2 { font-size: 16px; font-weight: 600; color: #374151; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb; display: flex; align-items: center; gap: 8px; }
+        .history-group h2 span { font-size: 12px; font-weight: 400; color: #9ca3af; }
+
+        .refresh-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+        .refresh-info { font-size: 13px; color: #6b7280; display: flex; align-items: center; gap: 8px; }
+        .refresh-info .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block; }
+        .refresh-info .dot.refreshing { background: #f59e0b; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .refresh-info .dot.auto { background: #3b82f6; animation: pulse 1s infinite; }
+        .action-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+        .action-btn { padding: 7px 18px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s; border: 1px solid #d1d5db; background: #fff; }
+        .action-btn:hover:not(:disabled) { border-color: #1a1a2e; }
+        .action-btn:disabled { opacity: 0.4; cursor: default; }
+        .action-btn.primary { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+        .action-btn.primary:hover:not(:disabled) { background: #16213e; }
+        .action-btn.auto { background: #2563eb; color: #fff; border-color: #2563eb; }
+        .action-btn.auto:hover:not(:disabled) { background: #1d4ed8; }
+        .action-btn.danger { color: #dc2626; border-color: #dc2626; }
+        .action-btn.danger:hover:not(:disabled) { background: #dc2626; color: #fff; }
+        .action-btn.auto.active { background: #1e40af; }
+
+        .log-viewer { background: #1a1a2e; color: #e5e7eb; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 12px; border-radius: 8px; padding: 16px; max-height: 360px; overflow-y: auto; margin-bottom: 20px; line-height: 1.7; }
+
+        .run-history { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; }
+        .run-history-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+        .run-history-header h3 { font-size: 14px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; }
+        .run-date-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+        .run-date-pill { padding: 4px 12px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 14px; background: #fff; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+        .run-date-pill:hover { border-color: #1a1a2e; }
+        .run-date-pill.active { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+        .run-list { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
+        .run-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.15s; border: 1px solid transparent; }
+        .run-item:hover { background: #f3f4f6; border-color: #e5e7eb; }
+        .run-item.active { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+        .run-item .run-time { font-weight: 500; min-width: 70px; }
+        .run-item .run-stats { display: flex; gap: 10px; color: #6b7280; }
+        .run-item.active .run-stats { color: rgba(255,255,255,0.7); }
+        .run-item .run-stats span { display: flex; align-items: center; gap: 3px; }
+        .run-item .badge-new { color: #059669; font-weight: 600; }
+        .run-item .badge-skip { color: #9ca3af; }
+        .run-item.active .badge-new { color: #34d399; }
+        .run-item.active .badge-skip { color: rgba(255,255,255,0.5); }
+        .run-history-empty { text-align: center; padding: 20px; color: #9ca3af; font-size: 13px; }
+        .run-total-label { font-size: 12px; color: #9ca3af; margin-left: 4px; }
+        .log-viewer .log-line { white-space: pre-wrap; word-break: break-all; }
+        .log-viewer .log-line.success { color: #34d399; }
+        .log-viewer .log-line.error { color: #f87171; }
+        .log-viewer .log-line.info { color: #60a5fa; }
+        .log-viewer .log-line.insert { color: #fbbf24; }
+        .log-viewer .log-line.dim { color: #6b7280; }
+
+        @media (max-width: 768px) {
+            .header-inner { flex-direction: column; align-items: flex-start; }
+            .sidebar { display: none; }
+            .job-card-footer { flex-direction: column; align-items: flex-start; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-inner">
+            <h1>Job <span>Ingester</span></h1>
+            <div class="stats">
+                <div>Total Jobs: <strong id="totalJobs">-</strong></div>
+                <div>Companies: <strong id="totalCompanies">-</strong></div>
+            </div>
+        </div>
+        <div class="tabs">
+            <div class="tab active" data-tab="browse">Browse</div>
+            <div class="tab" data-tab="today">Today</div>
+            <div class="tab" data-tab="history">History</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="page active" id="page-browse">
+            <div class="filters">
+                <div class="search-wrapper">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                    <input type="text" id="searchInput" placeholder="Search jobs by title, company, location..." autocomplete="off">
+                </div>
+                <select class="filter-select" id="companyFilter"><option value="">All Companies</option></select>
+                <button class="action-btn" id="sortBtn" style="min-width:110px;">Sort: Date</button>
+                <button class="action-btn" id="appliedFilterBtn" style="min-width:110px;">Applied: All</button>
+                <button class="clear-btn" id="clearBtn">Clear</button>
+            </div>
+            <div class="content">
+                <div id="errorMsg" style="color:#dc2626;font-size:13px;padding:8px 0;min-height:20px;"></div>
+                <div class="job-list" id="jobList"><div class="loading"><div class="spinner"></div><p>Loading jobs...</p></div></div>
+                <div class="sidebar">
+                    <div class="sidebar-card">
+                        <h3>Companies</h3>
+                        <div class="company-list" id="companyList"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="pagination" id="pagination" style="display:none">
+                <button class="page-btn" id="prevBtn">Previous</button>
+                <span class="page-info" id="pageInfo"></span>
+                <button class="page-btn" id="nextBtn">Next</button>
+            </div>
+        </div>
+
+        <div class="page" id="page-today">
+            <div class="refresh-bar">
+                <div class="refresh-info">
+                    <span class="dot" id="todayDot"></span>
+                    <span id="todayRefreshInfo">Ready</span>
+                </div>
+                <div class="action-btns">
+                    <button class="action-btn primary" id="manualRun">Manual Run</button>
+                    <button class="action-btn auto" id="autoRun">Start Automation</button>
+                    <button class="action-btn danger" id="stopAuto" disabled>Stop Automation</button>
+                </div>
+            </div>
+            <div class="run-history" id="runHistory">
+                <div class="run-history-header">
+                    <h3>Run History</h3>
+                    <div class="run-date-pills" id="runDatePills"></div>
+                </div>
+                <div class="run-list" id="runList"><div class="run-history-empty">Loading run history...</div></div>
+            </div>
+            <div class="log-viewer" id="logViewer" style="display:none;"></div>
+            <div id="todayList"></div>
+        </div>
+
+        <div class="page" id="page-history">
+            <div class="history-controls">
+                <button class="date-btn active" data-range="7">Last 7 days</button>
+                <button class="date-btn" data-range="30">Last 30 days</button>
+                <button class="date-btn" data-range="90">Last 90 days</button>
+                <button class="date-btn" data-range="all">All time</button>
+                <input type="date" class="date-input" id="historyStart">
+                <span style="color:#9ca3af;font-size:13px;">to</span>
+                <input type="date" class="date-input" id="historyEnd">
+                <button class="date-btn" id="applyCustom">Apply</button>
+            </div>
+            <div id="historyList"><div class="loading"><div class="spinner"></div><p>Loading history...</p></div></div>
+        </div>
+    </div>
+
+    <script>
+        const state = { page: 0, pageSize: 50, search: '', company: '', activeTab: 'browse', sortBy: 'date', appliedFilter: '' };
+        /* appliedFilter: '' = all, 'unapplied' = hide applied, 'applied' = show only applied */
+        let autoInterval = null;
+        let todayEventSource = null;
+        const AUTO_INTERVAL = 1200000;
+
+        function esc(s) {
+            if (s == null) return '';
+            const d = document.createElement('div');
+            d.textContent = String(s);
+            return d.innerHTML;
+        }
+
+        async function fetchJSON(url) {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '—';
+            const d = new Date(dateStr.replace(' ', 'T'));
+            if (isNaN(d.getTime())) return dateStr;
+            const now = new Date();
+            const diff = now - d;
+            const days = Math.floor(diff / 86400000);
+            if (days === 0) return 'Today';
+            if (days === 1) return 'Yesterday';
+            if (days < 30) return `${days}d ago`;
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        function effectiveDate(j) {
+            return j.posted_date || j.created_at || null;
+        }
+
+        function toDateStr(d) {
+            return d.toISOString().slice(0, 10);
+        }
+
+        /* ----- Applied State (persisted via API) ----- */
+        let appliedMap = new Map(); // job_key → applied_at_iso
+
+        function getJobKey(j) {
+            return (j.url || j.jobid || (j.title + '|' + j.company)).trim();
+        }
+
+        async function loadAppliedSet() {
+            try {
+                const res = await fetchJSON('/api/jobs/applied');
+                appliedMap = new Map(res.applied.map(item => [item.job_key, item.applied_at]));
+            } catch(e) {
+                appliedMap = new Map();
+            }
+        }
+
+        function isApplied(key) {
+            return appliedMap.has(key);
+        }
+        function getAppliedAt(key) {
+            return appliedMap.get(key) || null;
+        }
+
+        function updateAppliedUI(key, nowApplied, btnEl, cardEl) {
+            const footer = cardEl?.querySelector('.job-card-footer');
+            const dateEl = footer?.querySelector('.applied-date');
+            if (cardEl) cardEl.classList.toggle('applied', nowApplied);
+            if (btnEl) {
+                btnEl.classList.toggle('active', nowApplied);
+                btnEl.innerHTML = nowApplied
+                    ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Applied'
+                    : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Mark Applied';
+            }
+            if (dateEl) {
+                dateEl.textContent = nowApplied ? `Applied ${formatDate(appliedMap.get(key))}` : '';
+                dateEl.style.display = nowApplied ? '' : 'none';
+            }
+        }
+
+        async function toggleApplied(key, btnEl, cardEl) {
+            try {
+                const res = await fetch(`/api/jobs/toggle-applied?job_key=${encodeURIComponent(key)}`, { method: 'POST' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                if (data.applied) appliedMap.set(key, data.applied_at || new Date().toISOString()); else appliedMap.delete(key);
+                updateAppliedUI(key, data.applied, btnEl, cardEl);
+            } catch(e) {
+                console.error('toggleApplied failed:', e);
+                const errDiv = document.getElementById('errorMsg');
+                if (errDiv) errDiv.textContent = 'Toggle failed: ' + (e.message || e);
+                setTimeout(() => { if (errDiv) errDiv.textContent = ''; }, 3000);
+                return;
+            }
+            updateAppliedFilterBtn();
+        }
+
+        function filterByApplied(jobs) {
+            if (!state.appliedFilter) return jobs;
+            return jobs.filter(j => {
+                const key = getJobKey(j);
+                const a = appliedMap.has(key);
+                return state.appliedFilter === 'applied' ? a : !a;
+            });
+        }
+
+        function updateAppliedFilterBtn() {
+            const btn = document.getElementById('appliedFilterBtn');
+            const labels = { '': 'Applied: All', 'unapplied': 'Applied: Hide', 'applied': 'Applied: Only' };
+            btn.textContent = labels[state.appliedFilter] || 'Applied: All';
+        }
+
+        function cycleAppliedFilter() {
+            const modes = ['', 'unapplied', 'applied'];
+            const idx = modes.indexOf(state.appliedFilter);
+            state.appliedFilter = modes[(idx + 1) % modes.length];
+            state.page = 0;
+            updateAppliedFilterBtn();
+            loadBrowse();
+        }
+
+        function dedupJobs(jobs) {
+            const seen = new Set();
+            return jobs.filter(j => {
+                const key = (j.url || j.jobid || j.title + j.company).trim();
+                if (!key || seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+        }
+
+        function renderJobCard(j) {
+            const key = getJobKey(j);
+            const applied = isApplied(key);
+            const url = j.url && j.url.trim();
+            const validUrl = url && (url.startsWith('http://') || url.startsWith('https://'));
+            const extBtn = validUrl
+                ? `<a href="${esc(url)}" target="_blank" rel="noopener" class="apply-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg> Apply
+                   </a>`
+                : `<span class="apply-btn" style="opacity:0.5;cursor:default;">No Link</span>`;
+            const appliedCls = applied ? ' active' : '';
+            const cardCls = applied ? ' job-card applied' : ' job-card';
+            const appliedAt = getAppliedAt(key);
+            return `<div class="${cardCls}" data-job-key="${esc(key)}">
+                <div class="job-card-header"><div class="job-card-title">${esc(j.title)}</div></div>
+                <div class="job-card-company">${esc(j.company)}</div>
+                <div class="job-card-meta">
+                    <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg> ${esc(j.location) || 'N/A'}</span>
+                    <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> ${esc(j.jobid) || '—'}</span>
+                </div>
+                <div class="job-card-footer">
+                    <div style="display:flex;flex-direction:column;gap:4px;">
+                        <div class="applied-date" style="font-size:11px;color:#059669;${applied ? '' : 'display:none;'}">Applied ${formatDate(appliedAt)}</div>
+                        <button class="applied-btn${appliedCls}" data-job-key="${esc(key)}">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                            ${applied ? 'Applied' : 'Mark Applied'}
+                        </button>
+                    </div>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <div class="job-card-date">${formatDate(effectiveDate(j))}</div>
+                        ${extBtn}
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        /* ----- Browse Tab ----- */
+        function attachAppliedListeners(containerId) {
+            const el = document.getElementById(containerId);
+            el.querySelectorAll('.applied-btn').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const key = this.dataset.jobKey;
+                    const card = this.closest('.job-card');
+                    toggleApplied(key, this, card);
+                });
+            });
+        }
+
+        function renderJobs(jobs, containerId) {
+            const el = document.getElementById(containerId);
+            if (!jobs.length) {
+                el.innerHTML = `<div class="empty"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg><h3>No jobs found</h3><p>Try adjusting your search or filters.</p></div>`;
+                return;
+            }
+            el.innerHTML = jobs.map(renderJobCard).join('');
+            attachAppliedListeners(containerId);
+        }
+
+        function populateCompanyDropdown(companies) {
+            const sel = document.getElementById('companyFilter');
+            sel.innerHTML = '<option value="">All Companies</option>' +
+                companies.map(c => `<option value="${esc(c)}" ${state.company === c ? 'selected' : ''}>${esc(c)}</option>`).join('');
+        }
+
+        function updateCompanies(companyCounts) {
+            const el = document.getElementById('companyList');
+            el.innerHTML = companyCounts.map(({company, count}) =>
+                `<div class="company-item ${state.company === company ? 'active' : ''}" data-company="${esc(company)}"><span>${esc(company)}</span><span class="count">${count}</span></div>`
+            ).join('');
+            el.querySelectorAll('.company-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const company = item.dataset.company;
+                    state.company = state.company === company ? '' : company;
+                    document.getElementById('companyFilter').value = state.company;
+                    state.page = 0;
+        loadAppliedSet().then(() => loadBrowse());
+                });
+            });
+            populateCompanyDropdown(companyCounts.map(c => c.company));
+        }
+
+        function updateClearBtn() {
+            document.getElementById('clearBtn').classList.toggle('visible', !!(state.search || state.company));
+        }
+
+        async function loadBrowse() {
+            const el = document.getElementById('jobList');
+            el.innerHTML = `<div class="loading"><div class="spinner"></div><p>Loading jobs...</p></div>`;
+            try {
+                const params = new URLSearchParams({ limit: state.pageSize, offset: state.page * state.pageSize, sort_by: state.sortBy });
+                if (state.company) params.set('company', state.company);
+                if (state.search) params.set('search', state.search);
+
+                const [jobsRes, countsRes] = await Promise.all([
+                    fetchJSON(`/api/jobs?${params}`),
+                    fetchJSON('/api/companies/counts')
+                ]);
+
+                document.getElementById('totalJobs').textContent = jobsRes.total;
+                document.getElementById('totalCompanies').textContent = countsRes.companies.length;
+                const filtered = filterByApplied(jobsRes.jobs);
+                renderJobs(filtered, 'jobList');
+                updateCompanies(countsRes.companies);
+                updateClearBtn();
+
+                const totalPages = Math.ceil(jobsRes.total / state.pageSize);
+                const pg = document.getElementById('pagination');
+                if (totalPages > 1) {
+                    pg.style.display = 'flex';
+                    document.getElementById('pageInfo').textContent = `Page ${state.page + 1} of ${totalPages}`;
+                    document.getElementById('prevBtn').disabled = state.page === 0;
+                    document.getElementById('nextBtn').disabled = state.page >= totalPages - 1;
+                } else {
+                    pg.style.display = 'none';
+                }
+            } catch (err) {
+                el.innerHTML = `<div class="error"><h3>Failed to load jobs</h3><p>${esc(err.message)}</p><button class="retry-btn" onclick="loadBrowse()">Retry</button></div>`;
+            }
+        }
+
+        /* ----- Today Tab ----- */
+        let selectedRunId = null;
+        let selectedRunDate = null;
+
+        async function loadRunHistory() {
+            try {
+                const [runsRes, datesRes] = await Promise.all([
+                    fetchJSON('/api/runs?limit=50&offset=0'),
+                    fetchJSON('/api/runs/dates')
+                ]);
+                renderDatePills(datesRes.dates || []);
+                renderRunList(runsRes.runs || []);
+            } catch (e) {
+                console.error('loadRunHistory error:', e);
+                document.getElementById('runList').innerHTML = `<div class="run-history-empty">Failed to load run history: ${esc(e.message)}</div>`;
+            }
+        }
+
+        function renderDatePills(dates) {
+            const el = document.getElementById('runDatePills');
+            if (!dates.length) {
+                el.innerHTML = '<span style="font-size:12px;color:#9ca3af;">No runs yet</span>';
+                return;
+            }
+            el.innerHTML = `<div class="run-date-pill ${!selectedRunDate ? 'active' : ''}" data-date="">All</div>` +
+                dates.map(d => {
+                    const dateStr = d.run_date;
+                    const label = dateStr === new Date().toISOString().slice(0, 10) ? 'Today' : dateStr;
+                    return `<div class="run-date-pill ${selectedRunDate === dateStr ? 'active' : ''}" data-date="${esc(dateStr)}">${esc(label)} <span style="font-size:11px;opacity:0.6;">${d.run_count}</span></div>`;
+                }).join('');
+            el.querySelectorAll('.run-date-pill').forEach(pill => {
+                pill.addEventListener('click', () => {
+                    selectedRunDate = pill.dataset.date;
+                    selectedRunId = null;
+                    el.querySelectorAll('.run-date-pill').forEach(p => p.classList.remove('active'));
+                    pill.classList.add('active');
+                    loadRunHistory();
+                });
+            });
+        }
+
+        function renderRunList(runs) {
+            const el = document.getElementById('runList');
+            if (!runs.length) {
+                el.innerHTML = '<div class="run-history-empty">No runs found</div>';
+                return;
+            }
+            if (selectedRunDate) {
+                runs = runs.filter(r => r.run_date === selectedRunDate);
+            }
+            if (!runs.length) {
+                el.innerHTML = '<div class="run-history-empty">No runs on this date</div>';
+                return;
+            }
+            el.innerHTML = runs.map(r => {
+                const time = new Date(r.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const isActive = selectedRunId === r.id;
+                return `<div class="run-item ${isActive ? 'active' : ''}" data-run-id="${r.id}">
+                    <span class="run-time">${esc(time)}</span>
+                    <div class="run-stats">
+                        <span>Total <strong>${r.total_fetched}</strong></span>
+                        <span class="badge-new">+${r.new_inserted} new</span>
+                        <span class="badge-skip">${r.skipped} existing</span>
+                    </div>
+                </div>`;
+            }).join('');
+            el.querySelectorAll('.run-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const runId = parseInt(item.dataset.runId);
+                    selectedRunId = runId;
+                    loadRunJobs(runId);
+                    el.querySelectorAll('.run-item').forEach(i => i.classList.remove('active'));
+                    item.classList.add('active');
+                });
+            });
+        }
+
+        async function loadRunJobs(runId) {
+            const el = document.getElementById('todayList');
+            el.innerHTML = `<div class="loading"><div class="spinner"></div><p>Loading run jobs...</p></div>`;
+            try {
+                const res = await fetchJSON(`/api/runs/${runId}?limit=500`);
+                el.innerHTML = '';
+                const jobs = res.jobs || [];
+                const newJobs = jobs.filter(j => j.was_new);
+                const existingJobs = jobs.filter(j => !j.was_new);
+                if (newJobs.length) {
+                    const h = document.createElement('div');
+                    h.style.cssText = 'font-size:13px;font-weight:600;color:#059669;margin:4px 0 8px;';
+                    h.textContent = `New Jobs (${newJobs.length})`;
+                    el.appendChild(h);
+                    newJobs.forEach(j => { el.insertAdjacentHTML('beforeend', renderJobCard(j)); });
+                }
+                if (existingJobs.length) {
+                    const h = document.createElement('div');
+                    h.style.cssText = 'font-size:13px;font-weight:600;color:#6b7280;margin:16px 0 8px;';
+                    h.textContent = `Already Existing (${existingJobs.length})`;
+                    el.appendChild(h);
+                    existingJobs.forEach(j => { el.insertAdjacentHTML('beforeend', renderJobCard(j)); });
+                }
+                if (!res.jobs.length) {
+                    el.innerHTML = '<div class="empty"><h3>No jobs in this run</h3></div>';
+                }
+            } catch (e) {
+                el.innerHTML = `<div class="error"><h3>Failed to load run jobs</h3><p>${esc(e.message)}</p></div>`;
+            }
+        }
+
+        function logLine(html, className) {
+            const viewer = document.getElementById('logViewer');
+            viewer.style.display = 'block';
+            const div = document.createElement('div');
+            div.className = 'log-line ' + (className || '');
+            div.innerHTML = html;
+            viewer.appendChild(div);
+            viewer.scrollTop = viewer.scrollHeight;
+        }
+
+        function loadToday() {
+            if (todayEventSource) {
+                todayEventSource.close();
+            }
+
+            const el = document.getElementById('todayList');
+            const viewer = document.getElementById('logViewer');
+            const dot = document.getElementById('todayDot');
+            const info = document.getElementById('todayRefreshInfo');
+
+            viewer.style.display = 'none';
+            viewer.innerHTML = '';
+            el.innerHTML = '';
+            dot.className = 'dot refreshing';
+            info.textContent = 'Running scrapers...';
+
+            todayEventSource = new EventSource('/api/scrape/stream');
+
+            todayEventSource.onmessage = function(e) {
+                const data = JSON.parse(e.data);
+
+                if (data.type === 'log') {
+                    let cls = 'dim';
+                    const m = data.message;
+                    if (m.includes('✅') || m.includes('✨')) cls = 'success';
+                    else if (m.includes('❌')) cls = 'error';
+                    else if (m.includes('🔄') || m.includes('🔍')) cls = 'info';
+                    else if (m.includes('⬆️')) cls = 'insert';
+                    logLine(esc(m), cls);
+                }
+
+                if (data.type === 'done') {
+                    todayEventSource.close();
+                    todayEventSource = null;
+                    const jobs = dedupJobs(data.jobs || []);
+                    dot.className = autoInterval ? 'dot auto' : 'dot';
+                    info.textContent = `Last refreshed: ${new Date().toLocaleTimeString()} — ${jobs.length} new job${jobs.length !== 1 ? 's' : ''}`;
+                    if (jobs.length) {
+                        renderJobs(jobs, 'todayList');
+                    } else {
+                        el.innerHTML = `<div class="empty"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg><h3>No new jobs found</h3><p>All scrapers ran but no new jobs were posted.</p></div>`;
+                    }
+                    loadRunHistory();
+                    updateAutoButtons();
+                }
+
+                if (data.type === 'error') {
+                    todayEventSource.close();
+                    todayEventSource = null;
+                    dot.className = autoInterval ? 'dot auto' : 'dot';
+                    info.textContent = `Scrape failed at ${new Date().toLocaleTimeString()}`;
+                    logLine('❌ ' + esc(data.message || 'Unknown error'), 'error');
+                    el.innerHTML = `<div class="error"><h3>Failed to scrape jobs</h3><p>${esc(data.message)}</p><button class="retry-btn" onclick="loadToday()">Retry</button></div>`;
+                    updateAutoButtons();
+                }
+            };
+
+            todayEventSource.onerror = function() {
+                if (todayEventSource) {
+                    todayEventSource.close();
+                    todayEventSource = null;
+                }
+                updateAutoButtons();
+            };
+            updateAutoButtons();
+        }
+
+        function updateAutoButtons() {
+            const running = autoInterval !== null;
+            document.getElementById('autoRun').disabled = running;
+            document.getElementById('autoRun').textContent = running ? 'Auto Running...' : 'Start Automation';
+            document.getElementById('stopAuto').disabled = !running;
+            document.getElementById('manualRun').disabled = todayEventSource !== null;
+        }
+
+        function stopScraping() {
+            if (todayEventSource) {
+                todayEventSource.close();
+                todayEventSource = null;
+            }
+        }
+
+        function startAuto() {
+            if (autoInterval) return;
+            stopScraping();
+            loadToday();
+            autoInterval = setInterval(() => loadToday(), AUTO_INTERVAL);
+            document.getElementById('todayDot').className = 'dot auto';
+            document.getElementById('todayRefreshInfo').textContent = 'Automation running every 20 min';
+            updateAutoButtons();
+        }
+
+        function stopAuto() {
+            if (autoInterval) {
+                clearInterval(autoInterval);
+                autoInterval = null;
+            }
+            stopScraping();
+            document.getElementById('todayDot').className = 'dot';
+            document.getElementById('todayRefreshInfo').textContent = 'Automation stopped';
+            updateAutoButtons();
+        }
+
+        /* ----- History Tab ----- */
+        let historyRange = '7';
+        let historyStart = '';
+        let historyEnd = '';
+
+        function getHistoryDates(range) {
+            const now = new Date();
+            const end = now.toISOString();
+            if (range === 'all') return { start: '', end: '' };
+            const start = new Date(now.getTime() - parseInt(range) * 86400000);
+            return { start: start.toISOString(), end };
+        }
+
+        function groupJobsByPeriod(jobs) {
+            const now = new Date();
+            const today = toDateStr(now);
+            const yesterday = toDateStr(new Date(now.getTime() - 86400000));
+
+            const thisWeekStart = new Date(now);
+            thisWeekStart.setDate(now.getDate() - now.getDay());
+            const thisWeek = toDateStr(thisWeekStart);
+
+            const lastWeekStart = new Date(thisWeekStart);
+            lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+            const lastWeek = toDateStr(lastWeekStart);
+
+            const groups = { Today: [], Yesterday: [], 'This Week': [], 'Last Week': [], Earlier: [], 'No Date': [] };
+
+            jobs.forEach(j => {
+                const raw = j.posted_date;
+                if (!raw) { groups['No Date'].push(j); return; }
+                const d = raw.slice(0, 10);
+                if (d === today) groups.Today.push(j);
+                else if (d === yesterday) groups.Yesterday.push(j);
+                else if (d >= thisWeek) groups['This Week'].push(j);
+                else if (d >= lastWeek) groups['Last Week'].push(j);
+                else groups.Earlier.push(j);
+            });
+
+            return Object.entries(groups).filter(([_, v]) => v.length > 0);
+        }
+
+        async function loadHistory() {
+            const el = document.getElementById('historyList');
+            el.innerHTML = `<div class="loading"><div class="spinner"></div><p>Loading history...</p></div>`;
+            try {
+                let start, end;
+                if (historyStart && historyEnd) {
+                    start = new Date(historyStart).toISOString();
+                    end = new Date(historyEnd + 'T23:59:59').toISOString();
+                } else {
+                    const d = getHistoryDates(historyRange);
+                    start = d.start;
+                    end = d.end;
+                }
+
+                const params = new URLSearchParams({ limit: 500, offset: 0 });
+                if (start) params.set('created_after', start);
+                if (end) params.set('created_before', end);
+                params.set('company', state.company);
+
+                const res = await fetchJSON(`/api/jobs?${params}`);
+                const jobs = res.jobs;
+
+                if (!jobs.length) {
+                    el.innerHTML = `<div class="empty"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg><h3>No jobs in this period</h3><p>Try a different date range.</p></div>`;
+                    return;
+                }
+
+                const groups = groupJobsByPeriod(jobs);
+                el.innerHTML = groups.map(([period, items]) =>
+                    `<div class="history-group"><h2>${esc(period)} <span>${items.length} job${items.length > 1 ? 's' : ''}</span></h2>${items.map(renderJobCard).join('')}</div>`
+                ).join('');
+            } catch (err) {
+                el.innerHTML = `<div class="error"><h3>Failed to load history</h3><p>${esc(err.message)}</p><button class="retry-btn" onclick="loadHistory()">Retry</button></div>`;
+            }
+        }
+
+        /* ----- Tab Switching ----- */
+        function switchTab(tab) {
+            state.activeTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+            document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${tab}`));
+            if (tab === 'history') loadHistory();
+            if (tab === 'today') loadRunHistory();
+            if (tab === 'browse') { loadAppliedSet().then(() => loadBrowse()); }
+        }
+
+        document.querySelectorAll('.tab').forEach(t => {
+            t.addEventListener('click', () => switchTab(t.dataset.tab));
+        });
+
+        /* ----- Event Listeners ----- */
+        let searchTimeout;
+        document.getElementById('searchInput').addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                state.search = this.value;
+                state.page = 0;
+                loadBrowse();
+            }, 300);
+        });
+
+        document.getElementById('companyFilter').addEventListener('change', function() {
+            state.company = this.value;
+            state.page = 0;
+            if (state.activeTab === 'browse') loadBrowse();
+            else loadHistory();
+        });
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            state.search = '';
+            state.company = '';
+            state.appliedFilter = '';
+            state.page = 0;
+            document.getElementById('searchInput').value = '';
+            document.getElementById('companyFilter').value = '';
+            updateAppliedFilterBtn();
+            loadBrowse();
+        });
+
+        document.getElementById('prevBtn').addEventListener('click', () => { if (state.page > 0) { state.page--; loadBrowse(); } });
+        document.getElementById('nextBtn').addEventListener('click', () => { state.page++; loadBrowse(); });
+
+        document.getElementById('appliedFilterBtn').addEventListener('click', cycleAppliedFilter);
+
+        document.getElementById('sortBtn').addEventListener('click', function() {
+            state.sortBy = state.sortBy === 'date' ? 'created' : 'date';
+            this.textContent = 'Sort: ' + (state.sortBy === 'date' ? 'Date' : 'Created');
+            state.page = 0;
+            loadBrowse();
+        });
+
+        document.querySelectorAll('.date-btn[data-range]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                historyRange = this.dataset.range;
+                historyStart = '';
+                historyEnd = '';
+                document.getElementById('historyStart').value = '';
+                document.getElementById('historyEnd').value = '';
+                loadHistory();
+            });
+        });
+
+        document.getElementById('applyCustom').addEventListener('click', () => {
+            historyStart = document.getElementById('historyStart').value;
+            historyEnd = document.getElementById('historyEnd').value;
+            if (historyStart && historyEnd) {
+                document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
+                loadHistory();
+            }
+        });
+
+        document.getElementById('manualRun').addEventListener('click', () => { stopScraping(); loadToday(); });
+        document.getElementById('autoRun').addEventListener('click', startAuto);
+        document.getElementById('stopAuto').addEventListener('click', stopAuto);
+
+        loadBrowse();
+    </script>
+</body>
+</html>

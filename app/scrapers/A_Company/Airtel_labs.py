@@ -7,8 +7,11 @@ from fake_useragent import UserAgent
 from app.utils.DateConverter import convert_to_common_format
 
 class AirtelLabsScraper(BaseScraper):
-    def fetch_raw(self):
-        url = "https://airtel.darwinbox.in/ms/candidateapi/job?department=a66b91c788be2d&exp_from=1&page=1&limit=10"
+    PAGE_SIZE = 10
+
+    def _fetch_page(self, page: int) -> dict:
+        url = "https://airtel.darwinbox.in/ms/candidateapi/job?department=a66b91c788be2d&exp_from=1"
+        params = {"page": page, "limit": self.PAGE_SIZE}
         headers = {
             'User-Agent': UserAgent().random,
             'Accept': 'application/json, text/plain, */*',
@@ -21,29 +24,37 @@ class AirtelLabsScraper(BaseScraper):
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin',
             'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
+            'Pragma': 'no-cache',
         }
         try:
-            response = requests.get(
-                url,headers=headers,timeout=30)
-            json_data = response.json()
+            response = requests.get(url, params=params, headers=headers, timeout=30)
             print(response.status_code)
-            return json_data
-        except json.JSONDecodeError:
-            print("Response is not valid JSON")
-            print("Response text:")
-            print(
-                response.text[:500] + "..." if len(response.text) > 500 else response.text)
-            return response.text
+            return response.json()
+        except (json.JSONDecodeError, requests.RequestException):
+            print(f"Request failed")
+            return {}
+
+    def fetch_raw(self):
+        return self._fetch_page(1)
 
     def fetch_jobs(self) -> list[Job]:
-        raw = self.fetch_raw()
-        return self.parse(raw)
+        all_items = []
+        page = 1
+        while True:
+            data = self._fetch_page(page)
+            items = data.get("message", {}).get("jobs", [])
+            if not items:
+                break
+            all_items.extend(items)
+            page += 1
+        return self._parse_items(all_items)
 
     def parse(self, data) -> list[Job]:
-        job_posts = data.get("message",{}).get("jobs",[])
+        return self._parse_items(data.get("message", {}).get("jobs", []))
+
+    def _parse_items(self, items: list) -> list[Job]:
         job_list = []
-        for item in job_posts:
+        for item in items:
             job = Job(
                 title=item.get("designation_display_name", ""),
                 jobid=item.get("id"),
@@ -54,6 +65,3 @@ class AirtelLabsScraper(BaseScraper):
             )
             job_list.append(job)
         return job_list
-
-
-

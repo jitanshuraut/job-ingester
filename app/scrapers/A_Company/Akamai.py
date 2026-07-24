@@ -29,12 +29,9 @@ class AkamaiScraper(BaseScraper):
             json_data = response.json()
             print(response.status_code)
             return json_data
-        except json.JSONDecodeError:
-            print("Response is not valid JSON")
-            print("Response text:")
-            print(
-                response.text[:500] + "..." if len(response.text) > 500 else response.text)
-            return response.text
+        except (json.JSONDecodeError, requests.RequestException):
+            print(f"Request failed")
+            return {}
 
     def fetch_jobs(self) -> list[Job]:
         raw = self.fetch_raw()
@@ -55,11 +52,11 @@ class AkamaiScraper(BaseScraper):
         for item in first_job:
             job = Job(
                 title=item.get("Title", ""),
-                jobid=item.get("id"),
+                jobid=item.get("Id"),
                 company="AirtelLabs",
-                location=item.get("officelocation_show_arr", ""),
+                location=item.get("workLocation")[0].get("TownOrCity",""),
                 url=item.get("externalPath", ""),
-                posted_date=convert_to_common_format(item.get("created_on", "")),
+                posted_date=convert_to_common_format(item.get("PostedDate", "")),
             )
             job_list.append(job)
         return job_list

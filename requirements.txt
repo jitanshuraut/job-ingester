@@ -3,5 +3,10 @@ supabase
 resend
 jinja2
 requests
+beautifulsoup4
+lxml
+fake-useragent
 psutil
 python-dateutil
+fastapi
+uvicorn[standard]

@@ -32,12 +32,9 @@ class InnovaccerScraper(BaseScraper):
             json_data = response.json()
             print(response.status_code)
             return json_data
-        except json.JSONDecodeError:
-            print("Response is not valid JSON")
-            print("Response text:")
-            print(
-                response.text[:500] + "..." if len(response.text) > 500 else response.text)
-            return response.text
+        except (json.JSONDecodeError, requests.RequestException):
+            print(f"Request failed")
+            return {}
 
     def fetch_jobs(self) -> list[Job]:
         raw = self.fetch_raw()

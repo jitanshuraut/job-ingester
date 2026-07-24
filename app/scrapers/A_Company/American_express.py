@@ -2,62 +2,61 @@ from app.scrapers.base import BaseScraper
 from app.models.job import Job
 import requests
 import json
-from datetime import datetime
 from app.utils.DateConverter import convert_to_common_format
 
 
 class AmericanExpressScraper(BaseScraper):
-    def fetch_raw(self):
-        url = "https://aexp.eightfold.ai/api/apply/v2/jobs/30026919/jobs?domain=aexp.com"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Content-Type': 'application/json',
-            'Connection': 'keep-alive',
-            'Referer': 'aexp.eightfold.ai',
-            'Origin': 'aexp.eightfold.ai',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
+    LOCATION_ID = "300000000228786"
+
+    def _build_url(self):
+        base = "https://egug.fa.us2.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions"
+        params = (
+            "onlyData=true"
+            "&expand=requisitionList.workLocation"
+            "&finder=findReqs;siteNumber=CX_1,"
+            "facetsList=LOCATIONS,"
+            "limit=200,offset=0,"
+            f"locationId={self.LOCATION_ID},"
+            "sortBy=POSTING_DATES_DESC"
+        )
+        return f"{base}?{params}"
+
+    def _headers(self):
+        return {
+            'accept': '*/*',
+            'accept-language': 'en',
+            'content-type': 'application/vnd.oracle.adf.resourceitem+json;charset=utf-8',
+            'ora-irc-cx-userid': 'f9328128-e87c-429f-bdb0-74e35921563b',
+            'ora-irc-language': 'en',
+            'origin': 'https://careers.americanexpress.com',
+            'referer': 'https://careers.americanexpress.com/',
+            'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36',
         }
-        try:
-            response = requests.get(
-                url,headers=headers,timeout=30)
-            print(response.status_code)
-            json_data = response.json()
-            return json_data
-        except json.JSONDecodeError:
-            print("Response is not valid JSON")
-            print("Response text:")
-            print(
-                response.text[:500] + "..." if len(response.text) > 500 else response.text)
-            return response.text
 
     def fetch_jobs(self) -> list[Job]:
-        raw = self.fetch_raw()
-        return self.parse(raw)
+        try:
+            r = requests.get(self._build_url(), headers=self._headers(), timeout=30)
+            data = r.json()
+            items = data.get("items", [])
+            if not items:
+                return []
+            reqs = items[0].get("requisitionList", [])
+        except (json.JSONDecodeError, requests.RequestException, IndexError, KeyError):
+            return []
 
-    def parse(self, data) -> list[Job]:
-        items = data.get("positions", [])
-        job_list = []
-        for item in items:
-            job = Job(
-                title=item.get("name", ""),
-                jobid=item.get("display_job_id"),
+        all_jobs = []
+        for req in reqs:
+            title = req.get("Title", "")
+            job_id = str(req.get("Id", ""))
+            if not title or not job_id:
+                continue
+            location = req.get("PrimaryLocation") or "India"
+            all_jobs.append(Job(
+                title=title,
+                jobid=job_id,
                 company="AmericanExpress",
-                location=item.get("location", ""),
-                url=item.get("canonicalPositionUrl", ""),
-                posted_date=convert_to_common_format(item.get("t_update", "")),
-            )
-            job_list.append(job)
-        return job_list
-
-
-if __name__ == "__main__":
-    listener = AmericanExpressScraper()
-    jobs = listener.fetch_jobs()
-    for job in jobs:
-        print(job)
+                location=location,
+                url=f"https://careers.americanexpress.com/en/job/{job_id}/",
+                posted_date=convert_to_common_format(req.get("PostedDate", "")),
+            ))
+        return all_jobs
