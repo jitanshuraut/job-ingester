@@ -1,44 +1,62 @@
 from app.scrapers.base import BaseScraper
 from app.models.job import Job
+from app.analyzer.extractor import analyze_job_description
 import requests
 import json
+import re
 from app.utils.DateConverter import convert_to_common_format
 
 class AmazonScraper(BaseScraper):
-    PAGE_SIZE = 100
+    PAGE_SIZE = 5
 
-    def _fetch_page(self, offset: int) -> dict:
-        url = "https://www.amazon.jobs/en-gb/search.json"
-        params = {
+    def _build_params(self, offset: int) -> dict:
+        return {
             "category[]": "software-development",
-            "schedule_type_id[]": "Full-Time",
-            "normalized_country_code[]": "IND",
-            "radius": "24km",
+            "radius": "100000km",
+            "industry_experience[]": "one_to_three_years",
+            "facets[]": [
+                "normalized_country_code", "normalized_state_name", "normalized_city_name",
+                "location", "business_category", "category", "schedule_type_id",
+                "employee_class", "normalized_location", "job_function_id",
+                "is_manager", "is_intern",
+            ],
             "offset": offset,
             "result_limit": self.PAGE_SIZE,
             "sort": "relevant",
             "latitude": 28.63141,
             "longitude": 77.21676,
+            "loc_group_id": "",
             "loc_query": "india",
-            "base_query": "engineering",
+            "base_query": "",
+            "city": "",
             "country": "IND",
+            "region": "",
+            "county": "",
+            "query_options": "",
         }
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+
+    def _headers(self) -> dict:
+        return {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Content-Type': 'application/json',
+            'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
             'Connection': 'keep-alive',
-            'Referer': 'www.amazon.jobs',
-            'Origin': 'www.amazon.jobs',
+            'Referer': 'https://www.amazon.jobs/en/search?offset=0&result_limit=10&sort=relevant&category%5B%5D=software-development&distanceType=Mi&radius=Anykm&industry_experience=one_to_three_years&latitude=28.63141&longitude=77.21676&loc_group_id=&loc_query=india&base_query=&city=&country=IND&region=&county=&query_options=&',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin',
             'Cache-Control': 'no-cache',
             'Pragma': 'no-cache',
         }
+
+    def _fetch_page(self, offset: int) -> dict:
         try:
-            response = requests.get(url, params=params, headers=headers, timeout=30)
+            response = requests.get(
+                "https://www.amazon.jobs/en/search.json",
+                params=self._build_params(offset),
+                headers=self._headers(),
+                timeout=30,
+            )
             print(response.status_code)
             return response.json()
         except (json.JSONDecodeError, requests.RequestException):
@@ -60,16 +78,28 @@ class AmazonScraper(BaseScraper):
     def parse(self, data) -> list[Job]:
         return self._parse_items(data.get("jobs", []))
 
+    @staticmethod
+    def _strip_html(text: str) -> str:
+        if not text:
+            return ""
+        cleaned = re.sub(r"<[^>]+>", " ", text)
+        return re.sub(r"\s+", " ", cleaned).strip()
+
     def _parse_items(self, items: list) -> list[Job]:
         job_list = []
         for item in items:
+            bq = self._strip_html(item.get("basic_qualifications", ""))
+            desc = self._strip_html(item.get("description", ""))
+            analysis = analyze_job_description(f"{bq}\n{desc}")
             job = Job(
                 title=item.get("title", ""),
-                jobid=item.get("id"),
+                jobid=item.get("id_icims") or item.get("id"),
                 company="Amazon",
                 location=item.get("normalized_location", ""),
-                url=item.get("url_next_step", ""),
+                url="https://www.amazon.jobs" + item.get("job_path", ""),
                 posted_date=convert_to_common_format(item.get("posted_date", "")),
+                experience_years=json.dumps(analysis["experience_years"]),
+                skills=json.dumps(analysis["skills"]),
             )
             job_list.append(job)
         return job_list

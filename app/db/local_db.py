@@ -23,9 +23,16 @@ def init_db():
             company TEXT NOT NULL,
             location TEXT,
             url TEXT UNIQUE,
-            posted_date TEXT
+            posted_date TEXT,
+            experience_years TEXT DEFAULT '',
+            skills TEXT DEFAULT ''
         )
     """)
+    for col in ("experience_years", "skills"):
+        try:
+            conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} TEXT DEFAULT ''")
+        except Exception:
+            pass
     conn.execute("CREATE INDEX IF NOT EXISTS idx_company ON jobs(company)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_url ON jobs(url)")
     conn.commit()
@@ -46,8 +53,11 @@ def sync_from_supabase(supabase_client):
         for row in rows:
             try:
                 conn.execute(
-                    "INSERT OR IGNORE INTO jobs (title, jobid, company, location, url, posted_date) VALUES (?, ?, ?, ?, ?, ?)",
-                    (row.get("title", ""), row.get("jobid", ""), row.get("company", ""), row.get("location", ""), row.get("url", ""), row.get("posted_date", "")),
+                    """INSERT OR IGNORE INTO jobs (title, jobid, company, location, url, posted_date, experience_years, skills)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (row.get("title", ""), row.get("jobid", ""), row.get("company", ""),
+                     row.get("location", ""), row.get("url", ""), row.get("posted_date", ""),
+                     row.get("experience_years") or "", row.get("skills") or ""),
                 )
             except Exception:
                 pass
@@ -93,23 +103,23 @@ def get_jobs(company=None, search=None, start_date=None, end_date=None, limit=10
     conditions = []
 
     if company:
-        conditions.append("company = ?")
+        conditions.append("jobs.company = ?")
         params.append(company)
     if search:
-        conditions.append("(title LIKE ? OR company LIKE ? OR location LIKE ?)")
+        conditions.append("(jobs.title LIKE ? OR jobs.company LIKE ? OR jobs.location LIKE ?)")
         like = f"%{search}%"
         params.extend([like, like, like])
     if start_date:
-        conditions.append("posted_date >= ?")
+        conditions.append("jobs.posted_date >= ?")
         params.append(start_date)
     if end_date:
-        conditions.append("posted_date <= ?")
+        conditions.append("jobs.posted_date <= ?")
         params.append(end_date)
 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
 
-    query += " ORDER BY posted_date DESC LIMIT ? OFFSET ?"
+    query += " ORDER BY jobs.posted_date DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
 
     rows = conn.execute(query, params).fetchall()
@@ -147,12 +157,12 @@ def get_companies():
     return [row["company"] for row in rows]
 
 
-def insert_job(title, jobid, company, location, url, posted_date):
+def insert_job(title, jobid, company, location, url, posted_date, experience_years="", skills=""):
     conn = get_connection()
     try:
         conn.execute(
-            "INSERT OR IGNORE INTO jobs (title, jobid, company, location, url, posted_date) VALUES (?, ?, ?, ?, ?, ?)",
-            (title, jobid, company, location, url, posted_date),
+            "INSERT OR IGNORE INTO jobs (title, jobid, company, location, url, posted_date, experience_years, skills) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (title, jobid, company, location, url, posted_date, experience_years, skills),
         )
         conn.commit()
     except Exception:
@@ -278,6 +288,34 @@ def get_jobs_by_run_date(run_date: str, limit=500, offset=0):
     ).fetchone()["c"]
     conn.close()
     return [dict(r) for r in rows], total
+
+
+def get_job_id(url: str) -> int | None:
+    if not url:
+        return None
+    conn = get_connection()
+    row = conn.execute("SELECT id FROM jobs WHERE url = ?", (url,)).fetchone()
+    conn.close()
+    return row["id"] if row else None
+
+
+def save_analysis(job_id: int, data: dict):
+    conn = get_connection()
+    conn.execute("""
+        INSERT OR REPLACE INTO job_analysis
+            (job_id, platform, experience_years, skills, degrees, text_length, analyzed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        job_id,
+        data.get("platform", ""),
+        data.get("experience_years", "[]"),
+        data.get("skills", "[]"),
+        data.get("degrees", "[]"),
+        data.get("text_length", 0),
+        data.get("analyzed_at", ""),
+    ))
+    conn.commit()
+    conn.close()
 
 
 def init_applied_jobs():

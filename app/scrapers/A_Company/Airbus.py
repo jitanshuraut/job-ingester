@@ -1,5 +1,7 @@
 from app.scrapers.base import BaseScraper
 from app.models.job import Job
+from app.analyzer.extractor import analyze_job_description
+from app.analyzer.fetcher import fetch_description_text
 import requests
 import json
 from app.utils.DateConverter import convert_to_common_format
@@ -10,7 +12,7 @@ class AirbusScraper(BaseScraper):
     def _fetch_page(self, offset: int) -> dict:
         url = "https://ag.wd3.myworkdayjobs.com/wday/cxs/ag/Airbus/jobs"
         payload = {
-            "appliedFacets": {"locationCountry": ["c4f78be1a8f14da0ab49ce1162348a5e"], "jobFamilyGroup": ["f5811cef9cb5018463377f3f550a1bf2"]},
+            "appliedFacets": {"locationCountry": ["c4f78be1a8f14da0ab49ce1162348a5e"], "jobFamilyGroup": ["f5811cef9cb5015323ad7f3f550a1df2"]},
             "limit": self.PAGE_SIZE,
             "offset": offset,
             "searchText": "",
@@ -55,13 +57,18 @@ class AirbusScraper(BaseScraper):
     def _parse_items(self, items: list) -> list[Job]:
         job_list = []
         for item in items:
+            url = "https://ag.wd3.myworkdayjobs.com/en-US/Airbus"+item.get("externalPath", "")
+            description = fetch_description_text(url)
+            analysis = analyze_job_description(description)
             job = Job(
                 title=item.get("title", ""),
-                jobid=item.get("jobId"),
+                jobid=item.get("bulletFields")[0],
                 company="Airbus",
-                location=item.get("location", ""),
-                url=item.get("externalPath", ""),
+                location=item.get("locationsText", ""),
+                url=url,
                 posted_date=convert_to_common_format(item.get("postedOn", "")),
+                experience_years=json.dumps(analysis["experience_years"]),
+                skills=json.dumps(analysis["skills"]),
             )
             job_list.append(job)
         return job_list

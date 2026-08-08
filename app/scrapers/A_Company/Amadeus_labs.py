@@ -60,7 +60,7 @@ class AmadeusScraper(BaseScraper):
                 jobid=item.get("bulletFields")[0],
                 company="Amadeus",
                 location=item.get("locationsText", ""),
-                url=item.get("externalPath", ""),
+                url=f"https://amadeus.wd502.myworkdayjobs.com/en-US/jobs{item.get('externalPath', '')}" if item.get("externalPath") else "",
                 posted_date=convert_to_common_format(item.get("postedOn", "")),
             )
             job_list.append(job)

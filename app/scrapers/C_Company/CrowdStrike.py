@@ -60,7 +60,7 @@ class CrowdStrikeScraper(BaseScraper):
                 jobid=item.get("bulletFields")[0],
                 company="CrowdStrike",
                 location=item.get("locationsText", ""),
-                url=item.get("externalPath", ""),
+                url=f"https://crowdstrike.wd5.myworkdayjobs.com/en-US/crowdstrikecareers{item.get('externalPath', '')}" if item.get("externalPath") else "",
                 posted_date=convert_to_common_format(item.get("postedOn", "")),
             )
             job_list.append(job)

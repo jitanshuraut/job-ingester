@@ -60,7 +60,7 @@ class CadenceScraper(BaseScraper):
                 jobid=item.get("bulletFields")[0],
                 company="Cadence",
                 location=item.get("locationsText", ""),
-                url=item.get("externalPath", ""),
+                url=f"https://cadence.wd1.myworkdayjobs.com/en-US/External_Careers{item.get('externalPath', '')}" if item.get("externalPath") else "",
                 posted_date=convert_to_common_format(item.get("postedOn", "")),
             )
             job_list.append(job)

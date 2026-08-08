@@ -60,7 +60,7 @@ class UnisysScraper(BaseScraper):
                 jobid=item.get("jobId"),
                 company="Unisys",
                 location=item.get("location", ""),
-                url=item.get("externalPath", ""),
+                url=f"https://unisys.wd5.myworkdayjobs.com/en-US/External{item.get('externalPath', '')}" if item.get("externalPath") else "",
                 posted_date=convert_to_common_format(item.get("postedOn", "")),
             )
             job_list.append(job)

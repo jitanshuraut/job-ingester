@@ -60,7 +60,7 @@ class F5Scraper(BaseScraper):
                 jobid=item.get("bulletFields")[1],
                 company="F5",
                 location=item.get("locationsText", ""),
-                url=item.get("externalPath", ""),
+                url=f"https://ffive.wd5.myworkdayjobs.com/en-US/f5jobs{item.get('externalPath', '')}" if item.get("externalPath") else "",
                 posted_date=convert_to_common_format(item.get("postedOn", "")),
             )
             job_list.append(job)

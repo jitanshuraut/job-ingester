@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 
 
 class CitiScraper(BaseScraper):
-    BASE_URL = "https://jobs.citi.com/search-jobs/software/India/287/1/2/1269750/22/79/50/2"
+    BASE_URL = "https://jobs.citi.com/search-jobs/India/287/2/1269750/22/79/50/2"
 
     def __init__(self):
         self._session = requests.Session()

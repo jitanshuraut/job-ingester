@@ -212,6 +212,7 @@
                     <button class="action-btn primary" id="manualRun">Manual Run</button>
                     <button class="action-btn auto" id="autoRun">Start Automation</button>
                     <button class="action-btn danger" id="stopAuto" disabled>Stop Automation</button>
+                    <button class="action-btn" id="postTelegramBtn">Post to Telegram</button>
                 </div>
             </div>
             <div class="run-history" id="runHistory">
@@ -371,6 +372,25 @@
             });
         }
 
+        function fmtExp(exp) {
+            if (!exp) return '';
+            try {
+                const arr = JSON.parse(exp);
+                if (!arr.length) return '';
+                const parts = arr.map(e => e.min_years === e.max_years ? `${e.min_years}y` : `${e.min_years}-${e.max_years}y`);
+                return parts.join(', ');
+            } catch(e) { return exp; }
+        }
+
+        function fmtSkills(skills) {
+            if (!skills) return '';
+            try {
+                const arr = JSON.parse(skills);
+                if (!arr.length) return '';
+                return arr.slice(0, 5).join(', ') + (arr.length > 5 ? '...' : '');
+            } catch(e) { return skills; }
+        }
+
         function renderJobCard(j) {
             const key = getJobKey(j);
             const applied = isApplied(key);
@@ -384,6 +404,14 @@
             const appliedCls = applied ? ' active' : '';
             const cardCls = applied ? ' job-card applied' : ' job-card';
             const appliedAt = getAppliedAt(key);
+            const expText = fmtExp(j.experience_years);
+            const skillsText = fmtSkills(j.skills);
+            const analysisRow = (expText || skillsText)
+                ? `<div style="font-size:12px;color:#6b7280;margin-bottom:8px;display:flex;gap:12px;flex-wrap:wrap;">
+                      ${expText ? `<span>\u23F0 <strong>${esc(expText)}</strong></span>` : ''}
+                      ${skillsText ? `<span>\uD83D\uDD27 ${esc(skillsText)}</span>` : ''}
+                   </div>`
+                : '';
             return `<div class="${cardCls}" data-job-key="${esc(key)}">
                 <div class="job-card-header"><div class="job-card-title">${esc(j.title)}</div></div>
                 <div class="job-card-company">${esc(j.company)}</div>
@@ -391,6 +419,7 @@
                     <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg> ${esc(j.location) || 'N/A'}</span>
                     <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> ${esc(j.jobid) || '—'}</span>
                 </div>
+                ${analysisRow}
                 <div class="job-card-footer">
                     <div style="display:flex;flex-direction:column;gap:4px;">
                         <div class="applied-date" style="font-size:11px;color:#059669;${applied ? '' : 'display:none;'}">Applied ${formatDate(appliedAt)}</div>
@@ -648,7 +677,15 @@
                     dot.className = autoInterval ? 'dot auto' : 'dot';
                     info.textContent = `Last refreshed: ${new Date().toLocaleTimeString()} — ${jobs.length} new job${jobs.length !== 1 ? 's' : ''}`;
                     if (jobs.length) {
-                        renderJobs(jobs, 'todayList');
+                        document.getElementById('todayList').innerHTML = '';
+                        const h = document.createElement('div');
+                        h.style.cssText = 'font-size:13px;font-weight:600;color:#059669;margin-bottom:12px;';
+                        h.textContent = `New Jobs (${jobs.length})`;
+                        const listEl = document.createElement('div');
+                        listEl.id = 'todayJobCards';
+                        document.getElementById('todayList').appendChild(h);
+                        document.getElementById('todayList').appendChild(listEl);
+                        renderJobs(jobs, 'todayJobCards');
                     } else {
                         el.innerHTML = `<div class="empty"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg><h3>No new jobs found</h3><p>All scrapers ran but no new jobs were posted.</p></div>`;
                     }
@@ -871,6 +908,21 @@
         document.getElementById('manualRun').addEventListener('click', () => { stopScraping(); loadToday(); });
         document.getElementById('autoRun').addEventListener('click', startAuto);
         document.getElementById('stopAuto').addEventListener('click', stopAuto);
+        document.getElementById('postTelegramBtn').addEventListener('click', async function() {
+            this.disabled = true;
+            this.textContent = 'Posting...';
+            try {
+                const res = await fetch('/api/jobs/post-latest-new', { method: 'POST' });
+                const data = await res.json();
+                this.textContent = data.ok ? 'Posted ' + data.count : 'Failed';
+                if (!data.ok) alert('Telegram post failed: ' + (data.error || 'unknown'));
+                else setTimeout(() => { this.textContent = 'Post to Telegram'; this.disabled = false; }, 3000);
+            } catch(e) {
+                this.textContent = 'Error';
+                alert('Telegram error: ' + e.message);
+                this.disabled = false;
+            }
+        });
 
         loadBrowse();
     </script>

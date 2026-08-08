@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass
@@ -9,3 +10,5 @@ class Job:
     location: str
     url: str
     posted_date: str
+    experience_years: str = ""
+    skills: str = ""

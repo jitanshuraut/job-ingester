@@ -60,7 +60,7 @@ class SprinklrScraper(BaseScraper):
                 jobid=item.get("bulletFields")[0],
                 company="Sprinklr",
                 location=item.get("locationsText", ""),
-                url=item.get("externalPath", ""),
+                url=f"https://sprinklr.wd1.myworkdayjobs.com/en-US/careers{item.get('externalPath', '')}" if item.get("externalPath") else "",
                 posted_date=convert_to_common_format(item.get("postedOn", "")),
             )
             job_list.append(job)

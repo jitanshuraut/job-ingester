@@ -31,6 +31,9 @@ _supabase = None
 
 def get_supabase():
     global _supabase
+    if os.getenv("USE_SUPABASE", "true").lower() not in ("1", "true", "yes"):
+        _supabase = None
+        return None
     if _supabase is not None:
         return _supabase
     url = os.getenv("SUPABASE_URL")
@@ -92,6 +95,92 @@ def run_scrapers():
     aggregator = JobAggregator()
     new_jobs = aggregator.run()
     return {"jobs": [asdict(j) for j in new_jobs], "total": len(new_jobs)}
+
+
+@app.post("/api/jobs/post-telegram")
+def post_jobs_telegram(payload: dict):
+    from app.telegram.telegram_bot import TelegramBot
+    from app.models.job import Job
+
+    try:
+        bot = TelegramBot()
+    except Exception as e:
+        return {"ok": False, "error": f"Telegram not configured: {e}"}
+
+    jobs_data = payload.get("jobs", [])
+    jobs = []
+    for j in jobs_data:
+        try:
+            jobs.append(Job(
+                title=j.get("title", ""),
+                jobid=j.get("jobid", ""),
+                company=j.get("company", ""),
+                location=j.get("location", ""),
+                url=j.get("url", ""),
+                posted_date=str(j.get("posted_date") or ""),
+            ))
+        except Exception:
+            continue
+    result = bot.send_jobs(jobs)
+    return result
+
+
+def _enrich_with_analysis(jobs_list: list[dict]) -> list[dict]:
+    from app.db.local_db import get_connection
+    conn = get_connection()
+    for j in jobs_list:
+        url = j.get("url", "")
+        if url:
+            row = conn.execute(
+                "SELECT ja.experience_years, ja.skills FROM jobs "
+                "LEFT JOIN job_analysis ja ON jobs.id = ja.job_id WHERE jobs.url = ?",
+                (url,),
+            ).fetchone()
+            if row:
+                j["experience_years"] = row["experience_years"] or ""
+                j["skills"] = row["skills"] or ""
+    conn.close()
+    return jobs_list
+
+
+@app.post("/api/jobs/post-latest-new")
+def post_latest_new_telegram():
+    from app.telegram.telegram_bot import TelegramBot
+    from app.models.job import Job
+
+    try:
+        bot = TelegramBot()
+    except Exception as e:
+        return {"ok": False, "error": f"Telegram not configured: {e}"}
+
+    from app.db.local_db import get_runs, get_run_jobs
+    runs, _ = get_runs(limit=1, offset=0)
+    if not runs:
+        return {"ok": False, "error": "No runs found"}
+    run_id = runs[0]["id"]
+    jobs_data, _ = get_run_jobs(run_id, limit=99999, offset=0)
+    new_jobs_data = [j for j in jobs_data if j.get("was_new")]
+    _enrich_with_analysis(new_jobs_data)
+
+    jobs = []
+    for j in new_jobs_data:
+        try:
+            jobs.append(Job(
+                title=j.get("title", ""),
+                jobid=j.get("jobid", ""),
+                company=j.get("company", ""),
+                location=j.get("location", ""),
+                url=j.get("url", ""),
+                posted_date=str(j.get("posted_date") or ""),
+                experience_years=j.get("experience_years", ""),
+                skills=j.get("skills", ""),
+            ))
+        except Exception:
+            continue
+
+    result = bot.send_jobs(jobs)
+    result["count"] = len(jobs)
+    return result
 
 
 app.mount("/static", StaticFiles(directory="app/web/static"), name="static")

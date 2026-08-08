@@ -60,7 +60,7 @@ class QuantiphiScraper(BaseScraper):
                 jobid=item.get("bulletFields")[0],
                 company="Quantiphi",
                 location=item.get("locationsText", ""),
-                url=item.get("externalPath", ""),
+                url=f"https://quantiphi.wd1.myworkdayjobs.com/en-US/Careers_at_Quantiphi{item.get('externalPath', '')}" if item.get("externalPath") else "",
                 posted_date=convert_to_common_format(item.get("postedOn", "")),
             )
             job_list.append(job)
